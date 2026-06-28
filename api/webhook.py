@@ -1,19 +1,17 @@
+import json
 import logging
 import os
+from http.server import BaseHTTPRequestHandler
 
 import requests
-from flask import Flask, request, Response
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.environ.get("BOT_TOKEN", "")
 API = f"https://api.telegram.org/bot{TOKEN}"
 
-app = Flask(__name__)
-
-# Кеш участников чата: {chat_id: {user_id: user_dict}}
-# Живёт в рамках одного "тёплого" инстанса Vercel.
+# Кеш участников: {chat_id: {user_id: user_dict}}
 members_cache: dict = {}
 
 
@@ -31,7 +29,7 @@ def send_message(chat_id: int, text: str, parse_mode: str = None, reply_to: int 
         logger.error(f"sendMessage error: {e}")
 
 
-def get_chat_administrators(chat_id: int) -> list:
+def get_admins(chat_id: int) -> list:
     try:
         r = requests.get(
             f"{API}/getChatAdministrators",
@@ -45,40 +43,35 @@ def get_chat_administrators(chat_id: int) -> list:
         return []
 
 
-# ── Хендлеры команд ───────────────────────────────────────────────────────────
+# ── Команды ───────────────────────────────────────────────────────────────────
 
 def handle_start(message: dict):
     chat_id = message["chat"]["id"]
     chat_type = message["chat"]["type"]
     msg_id = message["message_id"]
-
     if chat_type == "private":
         send_message(
             chat_id,
-            "👋 Привет! Я бот для упоминания всех в группе.\n\n"
-            "Добавь меня в группу как администратора и используй команду /all",
+            "Привет! Я бот для упоминания всех в группе.\n\n"
+            "Добавь меня в группу как администратора и используй /all",
             reply_to=msg_id,
         )
     else:
-        send_message(
-            chat_id,
-            "✅ Бот активирован! Используй /all чтобы отметить всех.",
-            reply_to=msg_id,
-        )
+        send_message(chat_id, "Бот активирован! Используй /all чтобы отметить всех.", reply_to=msg_id)
 
 
 def handle_help(message: dict):
     chat_id = message["chat"]["id"]
     msg_id = message["message_id"]
     text = (
-        "🤖 <b>Бот для упоминания всех</b>\n\n"
-        "📋 <b>Команды:</b>\n"
+        "<b>Бот для упоминания всех</b>\n\n"
+        "<b>Команды:</b>\n"
         "• /all — отметить всех участников группы\n"
         "• /help — показать это сообщение\n\n"
-        "💡 <b>Как это работает:</b>\n"
+        "<b>Как это работает:</b>\n"
         "Бот запоминает всех, кто пишет в чат.\n"
         "Администраторы отмечаются автоматически.\n\n"
-        "⚙️ <b>Требования:</b>\n"
+        "<b>Требования:</b>\n"
         "Бот должен быть администратором группы."
     )
     send_message(chat_id, text, parse_mode="HTML", reply_to=msg_id)
@@ -91,15 +84,14 @@ def handle_all(message: dict):
     caller_name = message.get("from", {}).get("first_name", "Кто-то")
 
     if chat_type not in ("group", "supergroup"):
-        send_message(chat_id, "❌ Эта команда работает только в группах!", reply_to=msg_id)
+        send_message(chat_id, "Эта команда работает только в группах!", reply_to=msg_id)
         return
 
-    send_message(chat_id, "⏳ Собираю список участников...", reply_to=msg_id)
+    send_message(chat_id, "Собираю список участников...", reply_to=msg_id)
 
     mentions = []
 
-    # Администраторы (всегда доступны через API)
-    for member in get_chat_administrators(chat_id):
+    for member in get_admins(chat_id):
         u = member.get("user", {})
         if u.get("is_bot"):
             continue
@@ -109,11 +101,10 @@ def handle_all(message: dict):
             name = u.get("first_name") or "Участник"
             mentions.append(f'<a href="tg://user?id={u["id"]}">{name}</a>')
 
-    # Участники из кеша (те, кто писал в чат)
     for uid, u in members_cache.get(chat_id, {}).items():
         already = any(
             (f"@{u.get('username')}" in mentions if u.get("username") else False)
-            or f'tg://user?id={u["id"]}' in " ".join(mentions)
+            or f'tg://user?id={u.get("id")}' in " ".join(mentions)
         )
         if not already and not u.get("is_bot"):
             if u.get("username"):
@@ -125,9 +116,8 @@ def handle_all(message: dict):
     if not mentions:
         send_message(
             chat_id,
-            "⚠️ Не удалось найти участников.\n"
-            "Подсказка: участники должны хотя бы раз написать что-то в чат, "
-            "чтобы бот их запомнил.",
+            "Не удалось найти участников.\n"
+            "Подсказка: участники должны хотя бы раз написать что-то в чат.",
             reply_to=msg_id,
         )
         return
@@ -135,14 +125,13 @@ def handle_all(message: dict):
     chunk_size = 20
     for idx, i in enumerate(range(0, len(mentions), chunk_size)):
         chunk = mentions[i: i + chunk_size]
-        header = f"📢 <b>{caller_name}</b> зовёт всех!\n\n" if idx == 0 else ""
+        header = f"<b>{caller_name}</b> зовёт всех!\n\n" if idx == 0 else ""
         send_message(chat_id, header + " ".join(chunk), parse_mode="HTML")
 
 
-# ── Обработка входящих сообщений ──────────────────────────────────────────────
+# ── Routing ───────────────────────────────────────────────────────────────────
 
 def track_member(message: dict):
-    """Кеширует пользователя, написавшего сообщение."""
     chat_id = message["chat"]["id"]
     user = message.get("from")
     if user and not user.get("is_bot"):
@@ -152,7 +141,6 @@ def track_member(message: dict):
 def process_message(message: dict):
     text = message.get("text", "")
     track_member(message)
-
     if text.startswith("/start"):
         handle_start(message)
     elif text.startswith("/help"):
@@ -161,22 +149,30 @@ def process_message(message: dict):
         handle_all(message)
 
 
-# ── Flask routes ──────────────────────────────────────────────────────────────
+# ── Vercel native handler ─────────────────────────────────────────────────────
 
-@app.route("/api/webhook", methods=["POST"])
-def webhook():
-    update = request.get_json(force=True)
-    if not update:
-        return Response("Bad request", status=400)
-    try:
-        message = update.get("message") or update.get("edited_message")
-        if message:
-            process_message(message)
-    except Exception as e:
-        logger.error(f"Error processing update: {e}")
-    return Response("ok", status=200)
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            update = json.loads(body)
+            message = update.get("message") or update.get("edited_message")
+            if message:
+                process_message(message)
+        except Exception as e:
+            logger.error(f"Error processing update: {e}")
 
+        self._respond(200, b"ok")
 
-@app.route("/", methods=["GET"])
-def index():
-    return Response("🤖 Telegram bot is running on Vercel!", status=200)
+    def do_GET(self):
+        self._respond(200, b"Telegram bot is running on Vercel!")
+
+    def _respond(self, status: int, body: bytes):
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        logger.info(f"{self.address_string()} - {fmt % args}")

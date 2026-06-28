@@ -6,7 +6,12 @@
   python setup_webhook.py https://ВАШ-ПРОЕКТ.vercel.app
 """
 
+import io
 import sys
+
+# Фикс кодировки Windows (cp1251 не поддерживает эмодзи)
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 import os
 import requests
 from dotenv import load_dotenv
@@ -32,14 +37,14 @@ def set_webhook(vercel_url: str):
     result = r.json()
 
     if result.get("ok"):
-        print(f"✅ Webhook успешно установлен!")
-        print(f"   URL: {webhook_url}")
+        print("[OK] Webhook успешно установлен!")
+        print(f"     URL: {webhook_url}")
     else:
-        print(f"❌ Ошибка: {result.get('description')}")
+        print(f"[FAIL] Ошибка: {result.get('description')}")
 
     # Проверка
     info = requests.get(f"{API}/getWebhookInfo", timeout=10).json().get("result", {})
-    print(f"\n📋 Информация о webhook:")
+    print("\n[INFO] Информация о webhook:")
     print(f"   URL:             {info.get('url')}")
     print(f"   Pending updates: {info.get('pending_update_count', 0)}")
     if info.get("last_error_message"):
