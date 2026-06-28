@@ -166,7 +166,13 @@ class handler(BaseHTTPRequestHandler):
         self._respond(200, b"ok")
 
     def do_GET(self):
-        self._respond(200, b"Telegram bot is running on Vercel!")
+        token = os.environ.get("BOT_TOKEN", "")
+        if token:
+            masked = token[:6] + "..." + token[-4:]
+            body = f"Bot is running! TOKEN set: {masked}".encode()
+        else:
+            body = b"ERROR: BOT_TOKEN is NOT set in Vercel environment variables!"
+        self._respond(200, body)
 
     def _respond(self, status: int, body: bytes):
         self.send_response(status)
