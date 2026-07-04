@@ -22,12 +22,14 @@ members_cache: dict = {}
 
 # ── Telegram API helpers ──────────────────────────────────────────────────────
 
-def send_message(chat_id: int, text: str, parse_mode: str = None, reply_to: int = None):
+def send_message(chat_id: int, text: str, parse_mode: str = None, reply_to: int = None, reply_markup: dict | None = None):
     payload = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
     if reply_to:
         payload["reply_to_message_id"] = reply_to
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
         requests.post(f"{API}/sendMessage", json=payload, timeout=10)
     except Exception as e:
@@ -60,11 +62,20 @@ def handle_start(message: dict):
         save_started_user(user, chat_id)
 
     if chat_type == "private":
+        reply_markup = {
+            "keyboard": [
+                [{"text": "📞 Поделиться номером", "request_contact": True}]
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": True,
+        }
         send_message(
             chat_id,
             "Привет! Я бот для упоминания всех в группе.\n\n"
+            "Отправь свой номер телефона, чтобы он был сохранён и показан в списке пользователей.\n\n"
             "Добавь меня в группу как администратора и используй /all",
             reply_to=msg_id,
+            reply_markup=reply_markup,
         )
     else:
         send_message(chat_id, "Бот активирован! Используй /all чтобы отметить всех.", reply_to=msg_id)
