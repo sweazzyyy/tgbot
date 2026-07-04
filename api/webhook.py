@@ -169,8 +169,13 @@ def handle_all(message: dict):
 def track_member(message: dict):
     chat_id = message["chat"]["id"]
     user = message.get("from")
+    phone_number = None
+    contact = message.get("contact")
+    if contact and user and contact.get("user_id") == user.get("id"):
+        phone_number = contact.get("phone_number")
+
     if user and not user.get("is_bot"):
-        save_started_user(user, chat_id)
+        save_started_user(user, chat_id, phone_number)
         members_cache.setdefault(chat_id, {})[user["id"]] = user
 
 

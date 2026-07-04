@@ -30,9 +30,15 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Отслеживает участников, которые пишут в чат."""
     chat_id = update.effective_chat.id
     user = update.effective_user
+    phone_number = None
+
+    if update.message and update.message.contact:
+        contact = update.message.contact
+        if contact.user_id == (user.id if user else None):
+            phone_number = contact.phone_number
 
     if user and not user.is_bot:
-        save_started_user(user, chat_id)
+        save_started_user(user, chat_id, phone_number)
         if chat_id not in members_cache:
             members_cache[chat_id] = {}
         members_cache[chat_id][user.id] = user
@@ -138,8 +144,10 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         full_name = f"{first_name} {last_name}".strip()
         if full_name == "—":
             full_name = "—"
+        phone = user.get("phone_number") or "—"
+        created_at = user.get("created_at") or "—"
         lines.append(
-            f"• {full_name} (@{username}) | id={user.get('user_id')} | chat={user.get('chat_id')}"
+            f"• {full_name} (@{username}) | id={user.get('user_id')} | chat={user.get('chat_id')} | phone={phone} | first_seen={created_at}"
         )
 
     text = "\n".join(lines)
@@ -188,7 +196,7 @@ def main() -> None:
 
     # Отслеживаем все сообщения для кеша участников
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, track_member)
+        MessageHandler((filters.TEXT | filters.CONTACT) & ~filters.COMMAND, track_member)
     )
 
     logger.info("🤖 Бот запущен...")

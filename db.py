@@ -20,16 +20,22 @@ def init_db() -> None:
             username TEXT,
             first_name TEXT,
             last_name TEXT,
+            phone_number TEXT,
             chat_id INTEGER,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
+
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(started_users)").fetchall()]
+    if "phone_number" not in columns:
+        conn.execute("ALTER TABLE started_users ADD COLUMN phone_number TEXT")
+
     conn.commit()
     conn.close()
 
 
-def save_started_user(user: Any, chat_id: int | None = None) -> None:
+def save_started_user(user: Any, chat_id: int | None = None, phone_number: str | None = None) -> None:
     """Сохраняет пользователя в базу, если он впервые запустил бота."""
     init_db()
 
@@ -50,19 +56,22 @@ def save_started_user(user: Any, chat_id: int | None = None) -> None:
         username = user.get("username")
         first_name = user.get("first_name")
         last_name = user.get("last_name")
+        if phone_number is None:
+            phone_number = user.get("phone_number")
 
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         """
-        INSERT INTO started_users (user_id, username, first_name, last_name, chat_id)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO started_users (user_id, username, first_name, last_name, phone_number, chat_id)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             username = excluded.username,
             first_name = excluded.first_name,
             last_name = excluded.last_name,
+            phone_number = COALESCE(excluded.phone_number, started_users.phone_number),
             chat_id = excluded.chat_id
         """,
-        (user_id, username, first_name, last_name, chat_id),
+        (user_id, username, first_name, last_name, phone_number, chat_id),
     )
     conn.commit()
     conn.close()
@@ -75,7 +84,7 @@ def get_started_users(limit: int = 50) -> list[dict[str, Any]]:
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """
-        SELECT user_id, username, first_name, last_name, chat_id, created_at
+        SELECT user_id, username, first_name, last_name, phone_number, chat_id, created_at
         FROM started_users
         ORDER BY created_at DESC, user_id DESC
         LIMIT ?
