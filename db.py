@@ -1,8 +1,13 @@
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path(__file__).resolve().parent / "users.db"
+ROOT_DIR = Path(__file__).resolve().parent
+TMP_DIR = Path(os.getenv("TMPDIR", "/tmp"))
+DB_PATH = ROOT_DIR / "users.db"
+if os.getenv("VERCEL") == "1" or not os.access(ROOT_DIR, os.W_OK):
+    DB_PATH = TMP_DIR / "users.db"
 
 
 def init_db() -> None:
