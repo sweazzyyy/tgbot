@@ -12,6 +12,8 @@ from telegram.ext import (
 from telegram.constants import ParseMode
 from dotenv import load_dotenv
 
+from db import get_started_users, init_db, save_started_user
+
 load_dotenv()
 
 logging.basicConfig(
@@ -108,6 +110,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "🤖 <b>Бот для упоминания всех</b>\n\n"
         "📋 <b>Команды:</b>\n"
         "• /all — отметить всех участников группы\n"
+        "• /users — показать пользователей, которые запускали бота\n"
         "• /help — показать это сообщение\n\n"
         "💡 <b>Как это работает:</b>\n"
         "Бот запоминает всех, кто пишет в чат.\n"
@@ -118,9 +121,38 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
+async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда /users — показывает список пользователей из базы."""
+    users = get_started_users(limit=50)
+
+    if not users:
+        await update.message.reply_text("📭 Пока нет сохранённых пользователей.")
+        return
+
+    lines = ["👥 Пользователи, которые запускали бота:"]
+    for user in users:
+        username = user.get("username") or "—"
+        first_name = user.get("first_name") or "—"
+        last_name = user.get("last_name") or ""
+        full_name = f"{first_name} {last_name}".strip()
+        if full_name == "—":
+            full_name = "—"
+        lines.append(
+            f"• {full_name} (@{username}) | id={user.get('user_id')} | chat={user.get('chat_id')}"
+        )
+
+    text = "\n".join(lines)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда /start."""
     chat = update.effective_chat
+    user = update.effective_user
+
+    if user:
+        save_started_user(user, chat.id)
+
     if chat.type == "private":
         await update.message.reply_text(
             "👋 Привет! Я бот для упоминания всех в группе.\n\n"
@@ -135,6 +167,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 def main() -> None:
+    init_db()
+
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise ValueError(
@@ -149,6 +183,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("all", all_command))
+    app.add_handler(CommandHandler("users", users_command))
 
     # Отслеживаем все сообщения для кеша участников
     app.add_handler(

@@ -1,9 +1,14 @@
 import json
 import logging
 import os
+import sys
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 
 import requests
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from db import get_started_users, init_db, save_started_user
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +54,11 @@ def handle_start(message: dict):
     chat_id = message["chat"]["id"]
     chat_type = message["chat"]["type"]
     msg_id = message["message_id"]
+    user = message.get("from")
+
+    if user:
+        save_started_user(user, chat_id)
+
     if chat_type == "private":
         send_message(
             chat_id,
@@ -67,6 +77,7 @@ def handle_help(message: dict):
         "<b>Бот для упоминания всех</b>\n\n"
         "<b>Команды:</b>\n"
         "• /all — отметить всех участников группы\n"
+        "• /users — показать пользователей, которые запускали бота\n"
         "• /help — показать это сообщение\n\n"
         "<b>Как это работает:</b>\n"
         "Бот запоминает всех, кто пишет в чат.\n"
@@ -75,6 +86,30 @@ def handle_help(message: dict):
         "Бот должен быть администратором группы."
     )
     send_message(chat_id, text, parse_mode="HTML", reply_to=msg_id)
+
+
+def handle_users(message: dict):
+    chat_id = message["chat"]["id"]
+    msg_id = message["message_id"]
+    users = get_started_users(limit=50)
+
+    if not users:
+        send_message(chat_id, "📭 Пока нет сохранённых пользователей.", reply_to=msg_id)
+        return
+
+    lines = ["👥 Пользователи, которые запускали бота:"]
+    for user in users:
+        username = user.get("username") or "—"
+        first_name = user.get("first_name") or "—"
+        last_name = user.get("last_name") or ""
+        full_name = f"{first_name} {last_name}".strip()
+        if full_name == "—":
+            full_name = "—"
+        lines.append(
+            f"• {full_name} (@{username}) | id={user.get('user_id')} | chat={user.get('chat_id')}"
+        )
+
+    send_message(chat_id, "\n".join(lines), parse_mode="HTML", reply_to=msg_id)
 
 
 def handle_all(message: dict):
@@ -139,14 +174,22 @@ def track_member(message: dict):
 
 
 def process_message(message: dict):
-    text = message.get("text", "")
+    init_db()
+    text = (message.get("text", "") or "").strip()
+    if not text:
+        return
+
+    command = text.split()[0].lower()
     track_member(message)
-    if text.startswith("/start"):
+
+    if command.startswith("/start"):
         handle_start(message)
-    elif text.startswith("/help"):
+    elif command.startswith("/help"):
         handle_help(message)
-    elif text.startswith("/all"):
+    elif command.startswith("/all"):
         handle_all(message)
+    elif command.startswith("/users"):
+        handle_users(message)
 
 
 # ── Vercel native handler ─────────────────────────────────────────────────────
