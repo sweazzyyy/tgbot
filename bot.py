@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from telegram import Update, ChatMember
+from telegram import Update, ChatMember, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -163,10 +163,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         save_started_user(user, chat.id)
 
     if chat.type == "private":
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton("📞 Поделиться номером", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        )
         await update.message.reply_text(
             "👋 Привет! Я бот для упоминания всех в группе.\n\n"
+            "Отправь свой номер телефона, чтобы он был сохранён и показан в списке пользователей.\n\n"
             "Добавь меня в группу как администратора и используй команду /all",
             parse_mode=ParseMode.HTML,
+            reply_markup=keyboard,
         )
     else:
         await update.message.reply_text(
