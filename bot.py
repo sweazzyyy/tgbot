@@ -32,6 +32,7 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user = update.effective_user
 
     if user and not user.is_bot:
+        save_started_user(user, chat_id)
         if chat_id not in members_cache:
             members_cache[chat_id] = {}
         members_cache[chat_id][user.id] = user

@@ -170,6 +170,7 @@ def track_member(message: dict):
     chat_id = message["chat"]["id"]
     user = message.get("from")
     if user and not user.get("is_bot"):
+        save_started_user(user, chat_id)
         members_cache.setdefault(chat_id, {})[user["id"]] = user
 
 
